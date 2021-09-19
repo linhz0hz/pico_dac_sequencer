@@ -24,7 +24,7 @@ add_executable(pico_dac_pio pico_dac_pio.c )
 pico_set_program_name(pico_dac_pio "pico_dac_pio")
 pico_set_program_version(pico_dac_pio "0.1")
 
-pico_enable_stdio_uart(pico_dac_pio 0)
+pico_enable_stdio_uart(pico_dac_pio 1)
 pico_enable_stdio_usb(pico_dac_pio 0)
 
 # Add the standard library to the build
@@ -33,8 +33,7 @@ target_link_libraries(pico_dac_pio pico_stdlib)
 # Add any user requested libraries
 target_link_libraries(pico_dac_pio
         hardware_dma
-        hardware_pio
-        hardware_timer
+        hardware_interp
         hardware_clocks
         )
 

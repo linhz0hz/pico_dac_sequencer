@@ -1,0 +1,90 @@
+;
+; Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+
+
+.program 74hc595
+; This is just a simple shift register example used to expand io.
+
+; As this might be used to control H-bridge, I should probably support some 
+; form of dead-time control. Therefore, the PIO module will issue two 
+; consecutive gpio updates seperated by ~0.5us. The MCU program would be 
+; in charge of calculating the correct value for switching, and load those in
+; a buffer beforehand
+
+.side_set 2               ; The clock signal and the latch signal
+.define N_OUTPUT 16       ; The total number of shifts 
+.define N_STAGE 2         ; Two stage for deadtime control
+
+; Data on OUT pin 0
+; Clock on side-set pin 0
+
+.wrap_target
+public entry_point:
+    set y, N_STAGE      side 0b00  ; Load the number of bits to send this time
+    wait 0 gpio, 7 [3]  side 0b00  ; Wait for the CS pin to fall low to start 
+stage_loop:
+    set x, N_OUTPUT     side 0b00
+bit_loop:
+    out pins, 1         side 0b00   ; stall here if no data (clock high)
+    jmp x-- bit_loop    side 0b01   ; If all output are not fully shifted out yet, continue
+
+    jmp y-- stage_loop  side 0b10   ; If all stage not completed yet, execute bitloop once more
+                                    ; Also the latch signal is driven high here. 
+.wrap
+
+
+
+% c-sdk {
+// The C code required to interface with the shift register module correctly.
+
+
+static inline void 74hc595_program_init(PIO pio, uint sm,
+                   uint offset, uint data_pin, uint clk_pin,
+                   uint latch_pin, float clk_div) {
+    
+    pio_gpio_init(pio, data_pin);
+    pio_gpio_init(pio, clk_pin);
+    pio_gpio_init(pio, latch_pin);
+    
+    pio_sm_set_consecutive_pindirs(pio, sm, data_pin, 1, true);
+    pio_sm_set_consecutive_pindirs(pio, sm, clk_pin, 1, true);
+    pio_sm_set_consecutive_pindirs(pio, sm, latch_pin, 1, true);
+    
+    pio_sm_config c = 74hc595_get_default_config(offset);
+
+    sm_config_set_sideset_pins(&c, clk_pin);  //Does the other sideset pin automatically follow?
+    sm_config_set_out_pins(&c, data_pin, 1);  //
+
+    // We only do TX, so FIFO can be used for TX only
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX); 
+    // Autopull setting. 
+    sm_config_set_out_shift(&c, false, true, 74hc595_N_OUTPUT*74hc595_N_STAGE);
+    
+    sm_config_set_clkdiv(&c, clk_div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+
+// Making use of the narrow store replication behaviour on RP2040 to get the
+// data left-justified (as we are using shift-to-left to get MSB-first serial)
+
+static inline void 74hc595_put(PIO pio, uint sm, uint8_t x) {
+    while (pio_sm_is_tx_fifo_full(pio, sm))
+        ;
+    *(volatile uint8_t*)&pio->txf[sm] = x;
+}
+
+// SM is done when it stalls on an empty FIFO
+
+static inline void 74hc595_idle(PIO pio, uint sm) {
+    uint32_t sm_stall_mask = 1u << (sm + PIO_FDEBUG_TXSTALL_LSB);
+    pio->fdebug = sm_stall_mask;
+    while (!(pio->fdebug & sm_stall_mask))
+        ;
+}
+%}

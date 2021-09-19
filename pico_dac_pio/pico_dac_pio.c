@@ -4,8 +4,7 @@
 #include "hardware/gpio.h"
 #include "hardware/divider.h"
 #include "hardware/dma.h"
-#include "hardware/pio.h"
-#include "hardware/timer.h"
+#include "hardware/interp.h"
 #include "hardware/clocks.h"
 
 // UART defines
@@ -23,10 +22,6 @@
 #define GPIO 2
 
 
-int64_t alarm_callback(alarm_id_t id, void *user_data) {
-    // Put your timeout handler code in here
-    return 0;
-}
 
 
 
@@ -65,9 +60,13 @@ int main()
     printf("%d/%d = %d remainder %d\n", udividend, udivisor, to_quotient_u32(uresult), to_remainder_u32(uresult));
 
 
-
-    // Timer example code - This example fires off the callback after 2000ms
-    add_alarm_in_ms(2000, alarm_callback, NULL, false);
+    // Interpolator example code
+    interp_config cfg = interp_default_config();
+    // Now use the various interpolator library functions for your use case
+    // e.g. interp_config_clamp(&cfg, true);
+    //      interp_config_shift(&cfg, 2);
+    // Then set the config 
+    interp_set_config(interp0, 0, &cfg);
 
 
     puts("Hello, world!");
